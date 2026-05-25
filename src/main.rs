@@ -155,7 +155,11 @@ fn navigate_to_url(url_str: &str, verbose: bool) -> Result<()> {
         println!(
             "\nHTML preview: {}{}",
             html_preview,
-            if document.as_html().len() > 300 { "..." } else { "" }
+            if document.as_html().len() > 300 {
+                "..."
+            } else {
+                ""
+            }
         );
     }
 
