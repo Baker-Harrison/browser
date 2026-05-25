@@ -185,7 +185,12 @@ impl HtmlDocument {
         self.document
             .select(&selector)
             .filter_map(|element| {
-                let level: u8 = element.value().name().trim_start_matches('h').parse().ok()?;
+                let level: u8 = element
+                    .value()
+                    .name()
+                    .trim_start_matches('h')
+                    .parse()
+                    .ok()?;
                 let text: String = element.text().collect();
                 Some((level, text))
             })
