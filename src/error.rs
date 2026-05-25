@@ -1,3 +1,8 @@
+//! Error handling module for the browser
+//!
+//! This module provides comprehensive error types for all browser operations,
+//! using thiserror for clean error definitions and display implementations.
+
 use thiserror::Error;
 
 /// Main error type for the browser application
