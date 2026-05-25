@@ -47,6 +47,7 @@ The project uses the following development tooling:
 
 ### GitHub CLI Installation
 For Windows systems without admin access, use the portable version:
+ 
 ```bash
 # Download the latest portable version
 curl -L https://github.com/cli/cli/releases/latest/download/gh_*_windows_amd64.zip -o gh.zip
