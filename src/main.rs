@@ -1,4 +1,7 @@
+mod error;
+
 use clap::Parser;
+use error::{BrowserError, Result};
 
 /// A modern web browser built from scratch in Rust
 #[derive(Parser)]
@@ -21,7 +24,13 @@ fn main() {
         if cli.verbose {
             println!("Navigating to: {}", url);
         }
-        navigate_to_url(&url);
+        match navigate_to_url(&url) {
+            Ok(_) => println!("Loading: {}", url),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
     } else {
         println!("Browser - A modern web browser");
         println!("\nUsage: browser [OPTIONS] [URL]");
@@ -36,8 +45,10 @@ fn main() {
     }
 }
 
-fn navigate_to_url(url: &str) {
-    println!("Loading: {}", url);
+fn navigate_to_url(_url: &str) -> Result<()> {
     // TODO: Implement actual URL loading and rendering
-    println!("Browser engine is under development. URL loading will be implemented soon.");
+    // For now, return a not implemented error to demonstrate error handling
+    Err(BrowserError::NotImplemented(
+        "URL loading will be implemented soon".to_string(),
+    ))
 }
