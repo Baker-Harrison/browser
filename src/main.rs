@@ -2,12 +2,14 @@ mod error;
 mod html;
 mod network;
 mod url;
+mod window;
 
 use clap::Parser;
 use error::Result;
 use html::HtmlDocument;
 use network::HttpClient;
 use url::BrowserUrl;
+use window::run_browser_window;
 
 /// A modern web browser built from scratch in Rust
 #[derive(Parser)]
@@ -21,12 +23,23 @@ struct Cli {
     /// Enable verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Launch GUI version of the browser
+    #[arg(long)]
+    gui: bool,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    if let Some(url) = cli.url {
+    if cli.gui {
+        // Launch GUI version
+        if let Err(e) = run_browser_window() {
+            eprintln!("Error launching browser window: {}", e);
+            std::process::exit(1);
+        }
+    } else if let Some(url) = cli.url {
+        // CLI version
         if cli.verbose {
             println!("Navigating to: {}", url);
         }
@@ -43,11 +56,13 @@ fn main() {
         println!("\nOptions:");
         println!("  -h, --help     Print help information");
         println!("  -v, --verbose  Enable verbose output");
+        println!("  --gui          Launch GUI version");
         println!("\nArguments:");
         println!("  [URL]          URL to navigate to");
         println!("\nExamples:");
         println!("  browser https://example.com");
         println!("  browser --verbose https://example.com");
+        println!("  browser --gui");
     }
 }
 
