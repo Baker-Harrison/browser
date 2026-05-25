@@ -68,6 +68,7 @@ The project uses the following development tooling:
 - use meaningful commit messages
 - rebase often to keep history clean
 - squash commits before merging
+- never ever make code that is not what we want in the future. for example, making an interface in the cli when the browser is supposed to be a full desktop interface
 
 ## Open Source Workflow
 
