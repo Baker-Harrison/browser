@@ -108,6 +108,7 @@ pub mod layout {
     }
 
     /// Content area (below chrome)
+    #[allow(dead_code)]
     pub fn content_area(window_width: u32, window_height: u32) -> Rect {
         Rect::new(
             0,
@@ -119,10 +120,13 @@ pub mod layout {
 }
 
 /// 2D renderer for browser chrome
+///
+/// TODO: This is a software renderer for MVP. Future work should migrate to
+/// GPU-accelerated rendering (wgpu) for better performance with complex UIs.
 pub struct Renderer {
-    pub buffer: Vec<u32>,
-    pub width: u32,
-    pub height: u32,
+    buffer: Vec<u32>,
+    width: u32,
+    height: u32,
 }
 
 impl Renderer {
@@ -136,9 +140,32 @@ impl Renderer {
         }
     }
 
+    /// Get the width of the renderer
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Get the height of the renderer
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
     /// Get the buffer as a slice for softbuffer
     pub fn buffer(&self) -> &[u32] {
         &self.buffer
+    }
+
+    /// Resize the renderer to new dimensions without reallocating if possible
+    pub fn resize(&mut self, new_width: u32, new_height: u32) {
+        let new_size = (new_width * new_height) as usize;
+        let current_size = self.buffer.len();
+
+        if new_size != current_size {
+            self.buffer.resize(new_size, WHITE.to_u32());
+        }
+
+        self.width = new_width;
+        self.height = new_height;
     }
 
     /// Clear the entire buffer with a color

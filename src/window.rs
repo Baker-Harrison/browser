@@ -4,7 +4,7 @@
 //! and softbuffer for 2D rendering.
 
 use crate::error::{BrowserError, Result};
-use crate::renderer::{Renderer, WHITE, layout};
+use crate::renderer::{Renderer, WHITE};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use winit::{
@@ -105,28 +105,38 @@ impl BrowserWindow {
         let width = size.width;
         let height = size.height;
 
-        // Resize renderer if window size changed
-        if self.renderer.width != width || self.renderer.height != height {
-            self.renderer = Renderer::new(width, height);
+        // Guard against zero-size windows to avoid panic
+        if width == 0 || height == 0 {
+            return;
         }
 
-        // Clear the content area with white
-        let _content_area = layout::content_area(width, height);
+        // Resize renderer if window size changed (reuses buffer when possible)
+        if self.renderer.width() != width || self.renderer.height() != height {
+            self.renderer.resize(width, height);
+        }
+
+        // Clear the entire window with white
         self.renderer.clear(WHITE);
 
         // Draw browser chrome
         self.renderer.draw_chrome(width);
 
         // Present the frame
-        self.surface
-            .resize(
-                NonZeroU32::new(width).unwrap(),
-                NonZeroU32::new(height).unwrap(),
-            )
-            .expect("Failed to resize surface");
+        let width_nz = NonZeroU32::new(width).expect("width should not be 0");
+        let height_nz = NonZeroU32::new(height).expect("height should not be 0");
+        if let Err(e) = self.surface.resize(width_nz, height_nz) {
+            eprintln!("Failed to resize surface: {}", e);
+            return;
+        }
 
-        let mut buffer = self.surface.buffer_mut().expect("Failed to get buffer");
-        buffer.copy_from_slice(self.renderer.buffer());
+        match self.surface.buffer_mut() {
+            Ok(mut buffer) => {
+                buffer.copy_from_slice(self.renderer.buffer());
+            }
+            Err(e) => {
+                eprintln!("Failed to get surface buffer: {}", e);
+            }
+        }
     }
 }
 
