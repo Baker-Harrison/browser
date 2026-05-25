@@ -45,6 +45,26 @@ The project uses the following development tooling:
 - **Makefile**: Common development commands (run `make help` for available commands)
 - **GitHub Actions CI**: Automated testing on Ubuntu, MacOS, and Windows
 
+### GitHub CLI Installation
+For Windows systems without admin access, use the portable version:
+```bash
+# Download the latest portable version
+curl -L https://github.com/cli/cli/releases/latest/download/gh_*_windows_amd64.zip -o gh.zip
+unzip gh.zip -d gh
+# Add to PATH or use directly: ./gh/bin/gh.exe
+```
+
+For systems with admin access:
+```bash
+# Using winget
+winget install --id GitHub.cli
+
+# Using chocolatey (requires admin)
+choco install gh -y
+```
+
+Authentication: Always use `gh auth login` with browser flow for security. NEVER use PAT tokens directly in commands or scripts.
+
 ### Available Commands
 - `make build` - Build the project
 - `make test` - Run all tests
@@ -85,6 +105,15 @@ The project uses the following development tooling:
   5. Merge via PR after approval
 - **No direct commits** - Never push directly to main branch
 - **Branch verification** - Always verify you're on the correct branch before making changes
+
+## Security Rules (CRITICAL)
+
+- **NEVER use PAT tokens directly** - Never pass Personal Access Tokens as command-line arguments or in scripts
+- **Use secure authentication** - Always use interactive authentication flows (like `gh auth login`)
+- **No credentials in code** - Never commit API keys, tokens, or passwords to the repository
+- **Use environment variables** - Store sensitive credentials in environment variables or secret managers
+- **Token rotation** - Regularly rotate access tokens and credentials
+- **Audit dependencies** - Run `cargo audit` regularly to check for security vulnerabilities
 
 ## Open Source Workflow
 
