@@ -119,6 +119,14 @@ Authentication: Always use `gh auth login` with browser flow for security. NEVER
 - **Event-driven rendering** - Use specific events to trigger renders, not continuous loops
 - **Monitor resource usage** - Be aware of CPU/GPU implications of rendering loops
 
+## Error Handling Rules (CRITICAL)
+
+- **Never use .expect() in production code** - Use proper error handling with Result types
+- **Propagate errors gracefully** - Allow errors to bubble up through the call stack
+- **Avoid panics on recoverable errors** - Exit gracefully and report errors instead of crashing
+- **Use event_loop.exit() for fatal errors** - In event loops, exit gracefully instead of panicking
+- **Report errors to user** - Provide meaningful error messages for debugging
+
 ## Security Rules (CRITICAL)
 
 - **NEVER use PAT tokens directly** - Never pass Personal Access Tokens as command-line arguments or in scripts
