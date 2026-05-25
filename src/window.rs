@@ -110,9 +110,7 @@ impl ApplicationHandler for BrowserApplication {
             WindowEvent::RedrawRequested => {
                 // Handle redraw - for now just clear the window
                 // TODO: Implement actual rendering
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
+                // Note: Do not request redraw here to avoid infinite loop
             }
             _ => {}
         }
