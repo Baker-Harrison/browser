@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+*.profraw
+*.profdata
+
+# Documentation
+/doc/
+
+# Build artifacts
+/dist/
+/build/
+
+# Environment
+.env
+.env.local
+
+# Coverage
+tarpaulin-report.html
+*.profraw
+*.profdata
+
+# Benchmark results
+criterion/

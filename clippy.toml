@@ -1,0 +1,39 @@
+# Clippy linting configuration
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Documentation thresholds
+doc-valid-idents = ["Qt", "QML", "WebGL", "WebGPU", "WebSocket", "HTML", "CSS", "DOM", "HTTP", "HTTPS", "URL", "URI"]
+
+# Suppress certain lints for this project
+# Uncomment and add specific lints as needed
+# allow-expect-in-tests = true
+# allow-unwrap-in-tests = true
+# allow-dbg-in-tests = true
+
+# Maximum function lines before triggering too_long_lines
+too-many-lines-threshold = 100
+
+# Single char binding names threshold
+single-char-binding-names-threshold = 4
+
+# Array size threshold for large arrays
+array-size-threshold = 512000
+
+# Vec box size threshold
+vec-box-size-threshold = 4096
+
+# Stack size threshold
+stack-size-threshold = 512000
+
+# Enum variant size threshold
+enum-variant-size-threshold = 200
+
+# Verbose bit mask threshold
+verbose-bit-mask-threshold = 1
+
+# Literal representation threshold
+literal-representation-threshold = 10

@@ -1,0 +1,13 @@
+[package]
+name = "browser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5"  # Benchmarking
+proptest = "1.4"   # Property-based testing
+
+# Development tools (install with: cargo install cargo-tarpaulin cargo-audit)
+
