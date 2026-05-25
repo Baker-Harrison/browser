@@ -84,9 +84,14 @@ impl ApplicationHandler for BrowserApplication {
             .with_title("Browser")
             .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0));
 
-        let window = event_loop
-            .create_window(window_attributes)
-            .expect("Failed to create window");
+        let window = match event_loop.create_window(window_attributes) {
+            Ok(window) => window,
+            Err(e) => {
+                eprintln!("Failed to create window: {}", e);
+                event_loop.exit();
+                return;
+            }
+        };
 
         self.window = Some(BrowserWindow::new(window));
     }
