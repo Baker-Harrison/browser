@@ -70,6 +70,22 @@ The project uses the following development tooling:
 - squash commits before merging
 - never ever make code that is not what we want in the future. for example, making an interface in the cli when the browser is supposed to be a full desktop interface
 
+## Branch Management Rules (CRITICAL)
+
+- **NEVER work directly on main branch** - Always create a feature branch for any work
+- **Use correct branch naming** - Main branch is `main`, NOT `master`
+- **Always create feature branches** - For any new feature, bug fix, or significant change
+- **Feature branch naming** - Use `feature/description` or `fix/description` format
+- **Pull requests required** - All changes must be submitted via PR, never directly to main
+- **Branch workflow**:
+  1. Create feature branch from main
+  2. Make changes and test thoroughly
+  3. Submit PR for review
+  4. Address feedback
+  5. Merge via PR after approval
+- **No direct commits** - Never push directly to main branch
+- **Branch verification** - Always verify you're on the correct branch before making changes
+
 ## Open Source Workflow
 
 This project follows a structured open source development workflow:
