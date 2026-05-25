@@ -112,6 +112,13 @@ Authentication: Always use `gh auth login` with browser flow for security. NEVER
   - `cargo build --release --all-features`
   - Only push after all checks pass
 
+## Performance Rules (CRITICAL)
+
+- **Never request redraw in redraw handler** - Calling request_redraw() inside RedrawRequested event creates infinite loop
+- **Only redraw on state changes** - Request redraws only when actual changes occur (resize, input, content updates)
+- **Event-driven rendering** - Use specific events to trigger renders, not continuous loops
+- **Monitor resource usage** - Be aware of CPU/GPU implications of rendering loops
+
 ## Security Rules (CRITICAL)
 
 - **NEVER use PAT tokens directly** - Never pass Personal Access Tokens as command-line arguments or in scripts
