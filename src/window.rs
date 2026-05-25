@@ -127,9 +127,8 @@ impl ApplicationHandler for BrowserApplication {
 ///
 /// Returns `BrowserError` if window creation or event loop fails
 pub fn run_browser_window() -> Result<()> {
-    let event_loop = EventLoop::new().map_err(|e| {
-        BrowserError::InternalError(format!("Failed to create event loop: {}", e))
-    })?;
+    let event_loop = EventLoop::new()
+        .map_err(|e| BrowserError::InternalError(format!("Failed to create event loop: {}", e)))?;
 
     let mut app = BrowserApplication { window: None };
 
