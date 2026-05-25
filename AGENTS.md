@@ -68,3 +68,33 @@ The project uses the following development tooling:
 - use meaningful commit messages
 - rebase often to keep history clean
 - squash commits before merging
+
+## Open Source Workflow
+
+This project follows a structured open source development workflow:
+
+### Branch Strategy
+- `main` - Production-ready code, always stable
+- `develop` - Integration branch for features (to be created)
+- Feature branches - Created from `develop` for specific features
+
+### Development Process
+1. Create feature branches from `develop`
+2. Make changes following coding standards
+3. Run tests, formatting, and linting before committing
+4. Submit pull requests for review
+5. Ensure all CI checks pass
+6. Address review feedback
+7. Squash commits before final merge
+
+### Documentation
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines
+- See [SECURITY.md](SECURITY.md) for security vulnerability reporting
+- Use GitHub issue templates for bug reports and feature requests
+- Follow the pull request template when submitting changes
+
+### Quality Gates
+- All CI checks must pass (tests, formatting, linting, security audit)
+- Code coverage should be maintained or improved
+- Documentation must be updated for public API changes
+- Security vulnerabilities must be addressed before merging
