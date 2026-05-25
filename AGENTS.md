@@ -105,6 +105,12 @@ Authentication: Always use `gh auth login` with browser flow for security. NEVER
   5. Merge via PR after approval
 - **No direct commits** - Never push directly to main branch
 - **Branch verification** - Always verify you're on the correct branch before making changes
+- **Test before pushing** - Always run full test suite locally before pushing:
+  - `cargo test --all-features`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo fmt --all -- --check`
+  - `cargo build --release --all-features`
+  - Only push after all checks pass
 
 ## Security Rules (CRITICAL)
 
