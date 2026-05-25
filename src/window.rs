@@ -12,6 +12,7 @@ use winit::{
 };
 
 /// Represents the browser window and its state
+#[allow(dead_code)]
 pub struct BrowserWindow {
     /// The winit window
     window: Arc<Window>,
@@ -21,6 +22,7 @@ pub struct BrowserWindow {
     html_content: Arc<Mutex<Option<String>>>,
 }
 
+#[allow(dead_code)]
 impl BrowserWindow {
     /// Create a new browser window
     ///
@@ -141,8 +143,6 @@ pub fn run_browser_window() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_browser_window_creation() {
         // This test would require a running event loop, so we skip it
