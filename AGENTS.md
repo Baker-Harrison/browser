@@ -137,6 +137,53 @@ Authentication: Always use `gh auth login` with browser flow for security. NEVER
 - **Token rotation** - Regularly rotate access tokens and credentials
 - **Audit dependencies** - Run `cargo audit` regularly to check for security vulnerabilities
 
+## Parallel Agent Workflow (HOW TO GO FAST)
+
+Building this browser fast requires running multiple agents in parallel on
+independent subsystems. Follow this workflow:
+
+### The Golden Rule
+**Agents work against interfaces, not against each other.**
+All subsystem boundaries are defined as Rust traits in `INTERFACES.md`.
+Read that file before starting any new subsystem. Never change a trait
+without updating `INTERFACES.md` first.
+
+### How to assign parallel work
+1. Read `INTERFACES.md` to find subsystems marked "NOT YET BUILT"
+2. Pick two or more from the same priority tier (P1, P2, etc.)
+3. Assign each to a separate agent with this prompt template:
+
+```
+You are implementing the [SUBSYSTEM] for a Rust browser built from scratch.
+Read INTERFACES.md for the trait you must satisfy.
+Read AGENTS.md for project rules.
+Create branch feature/[subsystem-name] from main.
+Write the implementation + tests. Do NOT modify any other subsystem.
+Run cargo test, cargo clippy -- -D warnings, cargo fmt --check before pushing.
+Submit a PR when done.
+```
+
+### What can be parallelized right now (P1)
+- `feature/html-parser` — real HTML5 tokenizer state machine (`src/html/`)
+- `feature/css-parser` — CSS tokenizer + rule parser (`src/css/`)
+- `feature/network-raw-response` — refactor `HttpClient` to return `RawResponse`
+- `feature/font-rendering` — integrate `fontdue` crate for text rendering
+
+### What must be sequential
+- Layout engine needs style engine needs HTML + CSS parsers
+- Compositor integration needs paint layer needs layout
+- JS engine needs a working DOM
+
+### Agent task sizing
+- Each agent task should be completable in one session (~200-500 lines of Rust)
+- If a task is larger, split it: e.g. "HTML tokenizer" and "HTML tree builder" are two tasks
+- Include acceptance criteria (which existing tests must pass, what new tests to write)
+
+### Integration
+- Each agent works on its own branch
+- Merges happen in priority order (all P1 before any P2)
+- Integration tests live in `tests/integration/` and are written when two subsystems are first connected
+
 ## Open Source Workflow
 
 This project follows a structured open source development workflow:
