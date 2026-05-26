@@ -1,8 +1,11 @@
 //! Window management module for the browser
 //!
-//! This module handles window creation and event loop management using winit.
+//! This module handles window creation and event loop management using winit
+//! and softbuffer for 2D rendering.
 
 use crate::error::{BrowserError, Result};
+use crate::renderer::{Renderer, WHITE};
+use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use winit::{
     application::ApplicationHandler,
@@ -16,6 +19,10 @@ use winit::{
 pub struct BrowserWindow {
     /// The winit window
     window: Arc<Window>,
+    /// The softbuffer surface for rendering
+    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+    /// The renderer for 2D drawing
+    renderer: Renderer,
     /// Current URL being displayed
     current_url: Arc<Mutex<Option<String>>>,
     /// HTML content to render
@@ -33,12 +40,33 @@ impl BrowserWindow {
     /// # Returns
     ///
     /// Returns a new `BrowserWindow`
-    pub fn new(window: Window) -> Self {
-        BrowserWindow {
-            window: Arc::new(window),
+    ///
+    /// # Errors
+    ///
+    /// Returns `BrowserError` if surface creation fails
+    pub fn new(window: Window) -> Result<Self> {
+        let window_arc = Arc::new(window);
+        let context = softbuffer::Context::new(window_arc.clone()).map_err(|e| {
+            BrowserError::InternalError(format!("Failed to create softbuffer context: {}", e))
+        })?;
+
+        let surface = softbuffer::Surface::new(&context, window_arc.clone()).map_err(|e| {
+            BrowserError::InternalError(format!("Failed to create softbuffer surface: {}", e))
+        })?;
+
+        let size = window_arc.inner_size();
+        let width = size.width;
+        let height = size.height;
+
+        let renderer = Renderer::new(width, height);
+
+        Ok(BrowserWindow {
+            window: window_arc,
+            surface,
+            renderer,
             current_url: Arc::new(Mutex::new(None)),
             html_content: Arc::new(Mutex::new(None)),
-        }
+        })
     }
 
     /// Get the window
@@ -70,6 +98,49 @@ impl BrowserWindow {
     pub fn request_redraw(&self) {
         self.window.request_redraw();
     }
+
+    /// Render the browser UI
+    pub fn render(&mut self) {
+        let size = self.window.inner_size();
+        let width = size.width;
+        let height = size.height;
+
+        // Guard against zero-size windows to avoid panic
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        // Resize renderer if window size changed (reuses buffer when possible)
+        if self.renderer.width() != width || self.renderer.height() != height {
+            self.renderer.resize(width, height);
+        }
+
+        // Clear the entire window with white
+        self.renderer.clear(WHITE);
+
+        // Draw browser chrome
+        self.renderer.draw_chrome(width);
+
+        // Present the frame
+        let width_nz = NonZeroU32::new(width).expect("width should not be 0");
+        let height_nz = NonZeroU32::new(height).expect("height should not be 0");
+        if let Err(e) = self.surface.resize(width_nz, height_nz) {
+            eprintln!("Failed to resize surface: {}", e);
+            return;
+        }
+
+        match self.surface.buffer_mut() {
+            Ok(mut buffer) => {
+                buffer.copy_from_slice(self.renderer.buffer());
+                if let Err(e) = buffer.present() {
+                    eprintln!("Failed to present buffer: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to get surface buffer: {}", e);
+            }
+        }
+    }
 }
 
 /// Application state for the browser
@@ -93,7 +164,19 @@ impl ApplicationHandler for BrowserApplication {
             }
         };
 
-        self.window = Some(BrowserWindow::new(window));
+        match BrowserWindow::new(window) {
+            Ok(browser_window) => {
+                self.window = Some(browser_window);
+                // Trigger initial redraw
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize browser window: {}", e);
+                event_loop.exit();
+            }
+        }
     }
 
     fn window_event(
@@ -113,9 +196,10 @@ impl ApplicationHandler for BrowserApplication {
                 }
             }
             WindowEvent::RedrawRequested => {
-                // Handle redraw - for now just clear the window
-                // TODO: Implement actual rendering
-                // Note: Do not request redraw here to avoid infinite loop
+                // Handle redraw - render browser chrome
+                if let Some(window) = &mut self.window {
+                    window.render();
+                }
             }
             _ => {}
         }

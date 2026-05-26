@@ -1,6 +1,7 @@
 mod error;
 mod html;
 mod network;
+mod renderer;
 mod url;
 mod window;
 
