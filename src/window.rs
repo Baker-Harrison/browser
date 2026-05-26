@@ -132,6 +132,9 @@ impl BrowserWindow {
         match self.surface.buffer_mut() {
             Ok(mut buffer) => {
                 buffer.copy_from_slice(self.renderer.buffer());
+                if let Err(e) = buffer.present() {
+                    eprintln!("Failed to present buffer: {}", e);
+                }
             }
             Err(e) => {
                 eprintln!("Failed to get surface buffer: {}", e);
