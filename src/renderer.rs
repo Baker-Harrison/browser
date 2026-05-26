@@ -39,6 +39,28 @@ pub const DARK_GRAY: Color = Color::new(100, 100, 100);
 pub const BLUE: Color = Color::new(70, 130, 180);
 pub const LIGHT_BLUE: Color = Color::new(135, 206, 250);
 
+// Dark theme colors (Catppuccin-inspired)
+#[allow(dead_code)]
+pub const CHROME_BG: Color = Color::new(30, 30, 46);
+#[allow(dead_code)]
+pub const CHROME_SURFACE: Color = Color::new(49, 50, 68);
+#[allow(dead_code)]
+pub const CHROME_OVERLAY: Color = Color::new(69, 71, 90);
+#[allow(dead_code)]
+pub const CHROME_TEXT: Color = Color::new(205, 214, 244);
+#[allow(dead_code)]
+pub const CHROME_SUBTEXT: Color = Color::new(166, 173, 200);
+#[allow(dead_code)]
+pub const CHROME_LAVENDER: Color = Color::new(180, 190, 254);
+#[allow(dead_code)]
+pub const CHROME_GREEN: Color = Color::new(166, 227, 161);
+#[allow(dead_code)]
+pub const CHROME_BORDER: Color = Color::new(88, 91, 112);
+#[allow(dead_code)]
+pub const CHROME_TAB_ACTIVE: Color = Color::new(49, 50, 68);
+#[allow(dead_code)]
+pub const CHROME_TAB_INACTIVE: Color = Color::new(36, 36, 54);
+
 /// Rectangle for drawing operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -68,45 +90,87 @@ impl Rect {
 pub mod layout {
     use super::Rect;
 
-    pub const CHROME_HEIGHT: u32 = 40;
+    pub const CHROME_HEIGHT: u32 = 78;
+    pub const TAB_BAR_HEIGHT: u32 = 38;
+    pub const NAV_ROW_HEIGHT: u32 = 40;
     pub const BUTTON_SIZE: u32 = 30;
     pub const BUTTON_SPACING: u32 = 5;
+    pub const BUTTON_PADDING: u32 = 6;
     pub const ADDRESS_BAR_WIDTH: u32 = 400;
     pub const ADDRESS_BAR_HEIGHT: u32 = 30;
 
     /// Back button rectangle
     pub fn back_button() -> Rect {
-        Rect::new(BUTTON_SPACING, BUTTON_SPACING, BUTTON_SIZE, BUTTON_SIZE)
+        Rect::new(
+            BUTTON_SPACING,
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
+            BUTTON_SIZE,
+            BUTTON_SIZE,
+        )
     }
 
     /// Forward button rectangle
     pub fn forward_button() -> Rect {
         Rect::new(
             BUTTON_SPACING * 2 + BUTTON_SIZE,
-            BUTTON_SPACING,
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
             BUTTON_SIZE,
             BUTTON_SIZE,
         )
     }
 
-    /// Address bar rectangle
-    pub fn address_bar() -> Rect {
+    /// Refresh button rectangle
+    #[allow(dead_code)]
+    pub fn refresh_button() -> Rect {
         Rect::new(
             BUTTON_SPACING * 3 + BUTTON_SIZE * 2,
-            BUTTON_SPACING,
-            ADDRESS_BAR_WIDTH,
-            ADDRESS_BAR_HEIGHT,
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
+            BUTTON_SIZE,
+            BUTTON_SIZE,
         )
     }
 
-    /// Go button rectangle
-    pub fn go_button() -> Rect {
+    /// Home button rectangle
+    #[allow(dead_code)]
+    pub fn home_button() -> Rect {
         Rect::new(
-            BUTTON_SPACING * 4 + BUTTON_SIZE * 2 + ADDRESS_BAR_WIDTH,
-            BUTTON_SPACING,
-            50,
-            ADDRESS_BAR_HEIGHT,
+            BUTTON_SPACING * 4 + BUTTON_SIZE * 3,
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
+            BUTTON_SIZE,
+            BUTTON_SIZE,
         )
+    }
+
+    /// Address bar rectangle (responsive to window width)
+    pub fn address_bar(window_width: u32) -> Rect {
+        let x = BUTTON_SPACING * 5 + BUTTON_SIZE * 4;
+        let go_w = 50;
+        let width = window_width
+            .saturating_sub(x)
+            .saturating_sub(go_w)
+            .saturating_sub(BUTTON_SPACING * 2);
+        Rect::new(
+            x,
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
+            width,
+            NAV_ROW_HEIGHT - BUTTON_PADDING * 2,
+        )
+    }
+
+    /// Go button rectangle (responsive to window width)
+    pub fn go_button(window_width: u32) -> Rect {
+        Rect::new(
+            window_width.saturating_sub(50 + BUTTON_SPACING),
+            TAB_BAR_HEIGHT + BUTTON_PADDING,
+            50,
+            NAV_ROW_HEIGHT - BUTTON_PADDING * 2,
+        )
+    }
+
+    /// Tab bar area
+    #[allow(dead_code)]
+    pub fn tab_bar_area(window_width: u32) -> Rect {
+        Rect::new(0, 0, window_width, TAB_BAR_HEIGHT)
     }
 
     /// Full chrome area
@@ -146,6 +210,10 @@ pub struct Renderer {
     clip_rect: Option<Rect>,
     /// Font system owned by the renderer
     font_system: Option<FontSystem>,
+    /// Viewport scroll x offset for content rendering
+    pub scroll_x: i32,
+    /// Viewport scroll y offset for content rendering
+    pub scroll_y: i32,
 }
 
 impl Renderer {
@@ -159,7 +227,15 @@ impl Renderer {
             height,
             clip_rect: None,
             font_system,
+            scroll_x: 0,
+            scroll_y: 0,
         }
+    }
+
+    /// Set scroll offsets to offset coordinate spaces of drawing commands in composite
+    pub fn set_scroll_offset(&mut self, scroll_x: i32, scroll_y: i32) {
+        self.scroll_x = scroll_x;
+        self.scroll_y = scroll_y;
     }
 
     /// Get the width of the renderer
@@ -325,31 +401,174 @@ impl Renderer {
         }
     }
 
-    /// Draw the browser chrome UI
+    /// Fill a rectangle with rounded corners
+    #[allow(dead_code)]
+    pub fn fill_rounded_rect(&mut self, rect: Rect, radius: u32, color: Color) {
+        let color_u32 = color.to_u32();
+        let r = radius.min(rect.width / 2).min(rect.height / 2);
+
+        for py in 0..rect.height {
+            for px in 0..rect.width {
+                let x = rect.x + px;
+                let y = rect.y + py;
+                if x >= self.width || y >= self.height {
+                    continue;
+                }
+                if self.is_clipped(x, y) {
+                    continue;
+                }
+
+                // Check corners
+                let in_corner = |cx: u32, cy: u32| -> bool {
+                    let dx = if px < cx {
+                        cx - px
+                    } else if px >= rect.width - cx {
+                        px - (rect.width - cx - 1)
+                    } else {
+                        return false;
+                    };
+                    let dy = if py < cy {
+                        cy - py
+                    } else if py >= rect.height - cy {
+                        py - (rect.height - cy - 1)
+                    } else {
+                        return false;
+                    };
+                    (dx * dx + dy * dy) > cx * cy
+                };
+
+                if in_corner(r, r) {
+                    continue;
+                }
+
+                let index = (y * self.width + x) as usize;
+                self.buffer[index] = color_u32;
+            }
+        }
+    }
+
+    /// Draw a 1px line using Bresenham's algorithm
+    #[allow(dead_code)]
+    pub fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, color: Color) {
+        let color_u32 = color.to_u32();
+        let dx = (x2 - x1).abs();
+        let dy = -(y2 - y1).abs();
+        let sx: i32 = if x1 < x2 { 1 } else { -1 };
+        let sy: i32 = if y1 < y2 { 1 } else { -1 };
+        let mut err = dx + dy;
+        let mut cx = x1;
+        let mut cy = y1;
+
+        loop {
+            if cx >= 0
+                && cy >= 0
+                && (cx as u32) < self.width
+                && (cy as u32) < self.height
+                && !self.is_clipped(cx as u32, cy as u32)
+            {
+                let index = (cy as u32 * self.width + cx as u32) as usize;
+                self.buffer[index] = color_u32;
+            }
+            if cx == x2 && cy == y2 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                cx += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                cy += sy;
+            }
+        }
+    }
+
+    /// Draw the browser chrome UI with a dark two-row design
     pub fn draw_chrome_impl(&mut self, window_width: u32) {
-        // Draw chrome background
-        let chrome_area = layout::chrome_area(window_width);
-        self.fill_rect(chrome_area, GRAY);
+        // === Row 1: Tab bar ===
+        let tab_bar = layout::tab_bar_area(window_width);
+        self.fill_rect(tab_bar, CHROME_BG);
 
-        // Draw back button
-        let back_button = layout::back_button();
-        self.fill_rect(back_button, DARK_GRAY);
-        self.draw_rect(back_button, BLACK, 2);
+        // Active tab
+        let tab_x = 8u32;
+        let tab_y = 6u32;
+        let tab_w = 200u32;
+        let tab_h = layout::TAB_BAR_HEIGHT - 6;
+        let tab_rect = Rect::new(tab_x, tab_y, tab_w, tab_h);
+        self.fill_rounded_rect(tab_rect, 6, CHROME_TAB_ACTIVE);
 
-        // Draw forward button
-        let forward_button = layout::forward_button();
-        self.fill_rect(forward_button, DARK_GRAY);
-        self.draw_rect(forward_button, BLACK, 2);
+        // Tab title text
+        self.draw_text(tab_x + 12, tab_y + 8, "Example Domain", 13.0, CHROME_TEXT);
 
-        // Draw address bar
-        let address_bar = layout::address_bar();
-        self.fill_rect(address_bar, WHITE);
-        self.draw_rect(address_bar, DARK_GRAY, 2);
+        // Close button "x" on the tab
+        let close_x = tab_x + tab_w - 22;
+        let close_y = tab_y + 8;
+        self.draw_text(close_x, close_y, "x", 12.0, CHROME_SUBTEXT);
 
-        // Draw go button
-        let go_button = layout::go_button();
-        self.fill_rect(go_button, BLUE);
-        self.draw_rect(go_button, BLACK, 2);
+        // "+" new tab button
+        let new_tab_x = tab_x + tab_w + 6;
+        let new_tab_rect = Rect::new(new_tab_x, tab_y + 4, 28, tab_h - 8);
+        self.fill_rounded_rect(new_tab_rect, 4, CHROME_OVERLAY);
+        self.draw_text(new_tab_x + 8, tab_y + 8, "+", 14.0, CHROME_SUBTEXT);
+
+        // === Row 2: Navigation bar ===
+        let nav_y = layout::TAB_BAR_HEIGHT;
+        let nav_rect = Rect::new(0, nav_y, window_width, layout::NAV_ROW_HEIGHT);
+        self.fill_rect(nav_rect, CHROME_BG);
+
+        // Back button
+        let back = layout::back_button();
+        self.fill_rounded_rect(back, 6, CHROME_SURFACE);
+        // Draw left arrow using lines
+        let bcx = back.x as i32 + back.width as i32 / 2;
+        let bcy = back.y as i32 + back.height as i32 / 2;
+        self.draw_line(bcx + 5, bcy - 6, bcx - 5, bcy, CHROME_TEXT);
+        self.draw_line(bcx - 5, bcy, bcx + 5, bcy + 6, CHROME_TEXT);
+
+        // Forward button
+        let fwd = layout::forward_button();
+        self.fill_rounded_rect(fwd, 6, CHROME_SURFACE);
+        // Draw right arrow using lines
+        let fcx = fwd.x as i32 + fwd.width as i32 / 2;
+        let fcy = fwd.y as i32 + fwd.height as i32 / 2;
+        self.draw_line(fcx - 5, fcy - 6, fcx + 5, fcy, CHROME_TEXT);
+        self.draw_line(fcx + 5, fcy, fcx - 5, fcy + 6, CHROME_TEXT);
+
+        // Refresh button
+        let refresh = layout::refresh_button();
+        self.fill_rounded_rect(refresh, 6, CHROME_SURFACE);
+        self.draw_text(refresh.x + 6, refresh.y + 6, "R", 14.0, CHROME_TEXT);
+
+        // Home button
+        let home = layout::home_button();
+        self.fill_rounded_rect(home, 6, CHROME_SURFACE);
+        self.draw_text(home.x + 6, home.y + 6, "H", 14.0, CHROME_TEXT);
+
+        // Address bar
+        let address_bar = layout::address_bar(window_width);
+        self.fill_rounded_rect(address_bar, 6, CHROME_SURFACE);
+        self.draw_rect(address_bar, CHROME_BORDER, 1);
+
+        // Security indicator (green dot)
+        let dot_x = address_bar.x + 8;
+        let dot_y = address_bar.y + address_bar.height / 2 - 4;
+        let dot_rect = Rect::new(dot_x, dot_y, 8, 8);
+        self.fill_rounded_rect(dot_rect, 4, CHROME_GREEN);
+
+        // Go button
+        let go_button = layout::go_button(window_width);
+        self.fill_rounded_rect(go_button, 6, CHROME_LAVENDER);
+        self.draw_text(go_button.x + 14, go_button.y + 6, "Go", 13.0, CHROME_BG);
+
+        // Bottom border
+        self.draw_line(
+            0,
+            layout::CHROME_HEIGHT as i32 - 1,
+            window_width as i32 - 1,
+            layout::CHROME_HEIGHT as i32 - 1,
+            CHROME_BORDER,
+        );
     }
 
     /// Draw text at the given position using the font system.
@@ -502,12 +721,15 @@ impl Renderer {
 impl Compositor for Renderer {
     fn composite(&mut self, commands: &DisplayList) {
         let mut clip_stack: Vec<(u32, u32, u32, u32)> = Vec::new();
+        // Since content area starts at CHROME_HEIGHT, we must offset everything by that vertically
+        let content_y_offset = crate::renderer::layout::CHROME_HEIGHT as i32;
 
         for cmd in commands {
             match cmd {
                 DisplayCommand::FillRect { rect, color } => {
-                    let x = rect.x.max(0.0) as u32;
-                    let y = rect.y.max(0.0) as u32;
+                    // Apply scroll and chrome offset
+                    let x = ((rect.x as i32 - self.scroll_x).max(0)) as u32;
+                    let y = ((rect.y as i32 - self.scroll_y + content_y_offset).max(0)) as u32;
                     let width = rect.width.max(0.0) as u32;
                     let height = rect.height.max(0.0) as u32;
                     let draw_rect = Rect::new(x, y, width, height);
@@ -528,8 +750,9 @@ impl Compositor for Renderer {
                     size,
                     color,
                 } => {
-                    let x_u32 = x.max(0.0) as u32;
-                    let y_u32 = y.max(0.0) as u32;
+                    // Apply scroll and chrome offset
+                    let x_u32 = ((*x as i32 - self.scroll_x).max(0)) as u32;
+                    let y_u32 = ((*y as i32 - self.scroll_y + content_y_offset).max(0)) as u32;
                     let color_rgba = Color::rgba(color.0, color.1, color.2, color.3);
 
                     // If clipped, we skip rendering characters that fall outside the active clip limits.
@@ -538,8 +761,9 @@ impl Compositor for Renderer {
                 }
                 DisplayCommand::DrawImage { rect, data } => {
                     if let Ok(image) = crate::image::ImageLoader::load(data.as_slice()) {
-                        let x = rect.x.max(0.0) as u32;
-                        let y = rect.y.max(0.0) as u32;
+                        // Apply scroll and chrome offset
+                        let x = ((rect.x as i32 - self.scroll_x).max(0)) as u32;
+                        let y = ((rect.y as i32 - self.scroll_y + content_y_offset).max(0)) as u32;
                         let width = rect.width.max(0.0) as u32;
                         let height = rect.height.max(0.0) as u32;
                         let bounds = (x, y, width, height);
@@ -550,8 +774,9 @@ impl Compositor for Renderer {
                     }
                 }
                 DisplayCommand::ClipRect(rect) => {
-                    let x = rect.x.max(0.0) as u32;
-                    let y = rect.y.max(0.0) as u32;
+                    // Apply scroll and chrome offset
+                    let x = ((rect.x as i32 - self.scroll_x).max(0)) as u32;
+                    let y = ((rect.y as i32 - self.scroll_y + content_y_offset).max(0)) as u32;
                     let width = rect.width.max(0.0) as u32;
                     let height = rect.height.max(0.0) as u32;
                     clip_stack.push((x, y, width, height));

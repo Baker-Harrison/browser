@@ -8,7 +8,7 @@ use crate::error::{BrowserError, Result};
 use crate::history::History;
 use crate::html::HtmlDocument;
 use crate::network::HttpClient;
-use crate::renderer::{BLACK, Compositor, LIGHT_BLUE, Renderer, WHITE};
+use crate::renderer::{Compositor, Renderer, WHITE};
 use crate::url::BrowserUrl;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
@@ -118,6 +118,8 @@ pub struct BrowserWindow {
     links: Arc<Mutex<Vec<Link>>>,
     /// Viewport for scrolling content
     viewport: Arc<Mutex<Viewport>>,
+    /// Painted display commands list for rendering the content
+    display_list: Arc<Mutex<crate::paint::DisplayList>>,
 }
 
 #[allow(dead_code)]
@@ -151,6 +153,7 @@ impl BrowserWindow {
             document: Arc::new(Mutex::new(None)),
             links: Arc::new(Mutex::new(Vec::new())),
             viewport: Arc::new(Mutex::new(Viewport::new(width, height))),
+            display_list: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -195,12 +198,59 @@ impl BrowserWindow {
         })?;
 
         let document = HtmlDocument::parse(&html)?;
-        let links = self.extract_links(&document);
+
+        // CSS Parsing & Stylesheets Extraction
+        let mut stylesheets = Vec::new();
+        // Extract default styles if any or style elements
+        let style_nodes = document.dom().query_selector_all("style");
+        for node in style_nodes {
+            for child in &node.children {
+                if let crate::html::NodeKind::Text(content) = &child.kind {
+                    if let Ok(sheet) = crate::css::parse(content) {
+                        stylesheets.push(sheet);
+                    }
+                }
+            }
+        }
+
+        // Apply Styles
+        use crate::paint::Painter;
+        let style_engine = crate::layout::StyleEngine;
+        let styled_tree = style_engine.style(&document.dom().root, &stylesheets);
+
+        // Layout (assuming layout is relative to viewport content width, e.g. 800)
+        let layout_engine = crate::layout::LayoutEngine;
+        let layout_tree = layout_engine.layout(&styled_tree, 800.0);
+
+        // Paint
+        let painter = crate::paint::DefaultPainter;
+        let display_list = painter.paint(&layout_tree);
+
+        // Extract links dynamically from the layout tree boxes
+        let mut links = Vec::new();
+        fn collect_layout_links(box_node: &crate::layout::LayoutBox, links: &mut Vec<Link>) {
+            if let Some(ref href) = box_node.is_link {
+                links.push(Link {
+                    url: href.clone(),
+                    rect: (
+                        box_node.rect.x as u32,
+                        box_node.rect.y as u32,
+                        box_node.rect.width as u32,
+                        box_node.rect.height as u32,
+                    ),
+                });
+            }
+            for child in &box_node.children {
+                collect_layout_links(child, links);
+            }
+        }
+        collect_layout_links(&layout_tree, &mut links);
 
         *self.current_url.lock().unwrap() = Some(url_str.to_string());
         *self.html_content.lock().unwrap() = Some(html.clone());
         *self.document.lock().unwrap() = Some(document);
         *self.links.lock().unwrap() = links;
+        *self.display_list.lock().unwrap() = display_list;
 
         // Set title and add to history
         let title = self.extract_title(&html);
@@ -213,9 +263,9 @@ impl BrowserWindow {
             history.push(url_str, title)?;
         }
 
-        // Adjust scrollable content height dynamically based on lines of HTML
-        let line_count = html.lines().count();
-        let estimated_height = (line_count as u32 * 24).max(600);
+        // Adjust scrollable content height dynamically based on layout tree height
+        let content_height = layout_tree.rect.height as u32;
+        let estimated_height = content_height.max(600);
         self.viewport
             .lock()
             .unwrap()
@@ -224,31 +274,9 @@ impl BrowserWindow {
         Ok(())
     }
 
-    /// Extract links from the HTML content
+    /// Extract links from the HTML content (legacy, kept for backward compatibility if needed)
     fn extract_links(&self, _document: &HtmlDocument) -> Vec<Link> {
-        let mut links = Vec::new();
-        let html = self.html_content.lock().unwrap();
-        if let Some(ref html_content) = *html {
-            let mut y_offset = 20u32;
-            for line in html_content.lines() {
-                if line.contains("<a ") {
-                    if let Some(href_start) = line.find("href=\"") {
-                        let href_start = href_start + 6;
-                        if let Some(href_end) = line[href_start..].find("\"") {
-                            let url = line[href_start..href_start + href_end].to_string();
-                            if !url.is_empty() {
-                                links.push(Link {
-                                    url,
-                                    rect: (10, y_offset, 250, 20),
-                                });
-                                y_offset += 30;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        links
+        Vec::new()
     }
 
     /// Extract title from HTML content
@@ -263,16 +291,35 @@ impl BrowserWindow {
     /// Handle a mouse click at the given screen coordinates
     pub fn handle_click(&self, screen_x: u32, screen_y: u32) -> Result<bool> {
         let content_y_offset = crate::renderer::layout::CHROME_HEIGHT;
+        let width = self.window.inner_size().width;
+
         if screen_y < content_y_offset {
             // Click is inside browser chrome area - handle back/forward navigation
             let back_rect = crate::renderer::layout::back_button();
             let forward_rect = crate::renderer::layout::forward_button();
+            let refresh_rect = crate::renderer::layout::refresh_button();
+            let home_rect = crate::renderer::layout::home_button();
+            let go_rect = crate::renderer::layout::go_button(width);
 
             if back_rect.contains(screen_x, screen_y) {
                 self.go_back()?;
                 return Ok(true);
             } else if forward_rect.contains(screen_x, screen_y) {
                 self.go_forward()?;
+                return Ok(true);
+            } else if refresh_rect.contains(screen_x, screen_y) {
+                if let Some(ref url) = self.get_url() {
+                    self.navigate(url)?;
+                }
+                return Ok(true);
+            } else if home_rect.contains(screen_x, screen_y) {
+                self.navigate("https://example.com")?;
+                return Ok(true);
+            } else if go_rect.contains(screen_x, screen_y) {
+                // If go is clicked, trigger a refresh or do nothing for now
+                if let Some(ref url) = self.get_url() {
+                    self.navigate(url)?;
+                }
                 return Ok(true);
             }
             return Ok(false);
@@ -394,33 +441,27 @@ impl BrowserWindow {
         let (scroll_x, scroll_y) = (viewport.scroll_x, viewport.scroll_y);
         drop(viewport);
 
-        // Draw simple link rectangles with labels
-        let links = self.links.lock().unwrap();
-        for (i, link) in links.iter().enumerate() {
-            let (lx, ly, lw, lh) = link.rect;
-            let draw_rect = crate::renderer::Rect::new(lx, ly + content_area.y, lw, lh);
-            self.renderer
-                .fill_rect_offset(draw_rect, scroll_x, scroll_y, LIGHT_BLUE);
-
-            self.renderer.draw_text(
-                (lx as i32 - scroll_x) as u32 + 5,
-                (ly as i32 + content_area.y as i32 - scroll_y) as u32 + 2,
-                &format!("{}. {}", i + 1, link.url),
-                12.0,
-                BLACK,
-            );
-        }
-        drop(links);
+        let display_list = self.display_list.lock().unwrap().clone();
+        // Composite display list
+        // Apply viewport scroll offsets
+        self.renderer.set_scroll_offset(scroll_x, scroll_y);
+        self.renderer.composite(&display_list);
+        self.renderer.set_scroll_offset(0, 0);
 
         // Clear content clipping to allow chrome to render over everything
         self.renderer.clear_clip();
         self.renderer.draw_chrome(width);
 
-        // Render current URL in address bar
+        // Render current URL in address bar (using CHROME_TEXT color)
         if let Some(ref url) = self.get_url() {
-            let address_rect = crate::renderer::layout::address_bar();
-            self.renderer
-                .draw_text(address_rect.x + 5, address_rect.y + 6, url, 14.0, BLACK);
+            let address_rect = crate::renderer::layout::address_bar(width);
+            self.renderer.draw_text(
+                address_rect.x + 28, // padding for padlock icon
+                address_rect.y + 8,
+                url,
+                13.0,
+                crate::renderer::CHROME_TEXT,
+            );
         }
 
         // Present to the screen
