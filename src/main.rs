@@ -110,7 +110,15 @@ fn navigate_to_url(url_str: &str, verbose: bool) -> Result<()> {
     }
     let html_content = client.get(url_str)?;
     if verbose {
-        println!("  ✓ Fetched {} bytes", html_content.len());
+        println!("  ✓ Fetched {} bytes (via get())", html_content.len());
+        // Also demonstrate fetch() returning full RawResponse
+        let raw = client.fetch(url_str)?;
+        println!("  ✓ fetch() returned RawResponse:");
+        println!("    Status: {}", raw.status);
+        println!("    MIME type: {}", raw.mime_type);
+        println!("    Final URL: {}", raw.url);
+        println!("    Headers: {} total", raw.headers.len());
+        println!("    Body size: {} bytes", raw.body.len());
     }
 
     // Step 3: Parse the HTML
