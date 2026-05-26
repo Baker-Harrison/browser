@@ -16,9 +16,9 @@ impl Color {
         Color { r, g, b }
     }
 
-    /// Convert to u32 for softbuffer (0xBGR format typically)
+    /// Convert to u32 for softbuffer (0x00RRGGBB format)
     pub fn to_u32(self) -> u32 {
-        ((self.b as u32) << 16) | ((self.g as u32) << 8) | (self.r as u32)
+        ((self.r as u32) << 16) | ((self.g as u32) << 8) | (self.b as u32)
     }
 }
 
