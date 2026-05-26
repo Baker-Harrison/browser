@@ -11,6 +11,7 @@ reqwest = { version = "0.12", features = ["rustls-tls", "blocking"] }
 scraper = "0.20"
 winit = "0.30"
 softbuffer = "0.4"
+fontdue = "0.9"
 
 [dev-dependencies]
 criterion = "0.5"  # Benchmarking

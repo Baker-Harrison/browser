@@ -3,17 +3,26 @@
 //! This module handles basic 2D rendering using softbuffer for drawing
 //! browser UI elements like address bar and navigation buttons.
 
-/// Color represented as RGB
+use crate::font::FontSystem;
+
+/// Color represented as RGBA
 #[derive(Debug, Clone, Copy)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+    #[allow(dead_code)]
+    pub a: u8,
 }
 
 impl Color {
     pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Color { r, g, b }
+        Color { r, g, b, a: 255 }
+    }
+
+    #[allow(dead_code)]
+    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Color { r, g, b, a }
     }
 
     /// Convert to u32 for softbuffer (0x00RRGGBB format)
@@ -270,19 +279,46 @@ impl Renderer {
     }
 
     #[allow(dead_code)]
-    /// Draw simple text (placeholder - real text rendering requires font library)
-    pub fn draw_text_placeholder(&mut self, rect: Rect, _text: &str) {
-        // This is a placeholder - real text rendering requires font libraries
-        // For now, we just draw a line to indicate where text would be
-        let text_line_y = rect.y + rect.height / 2;
-        let line_start = rect.x + 5;
-        let line_end = rect.x + rect.width - 5;
+    /// Draw text at the given position using the font system.
+    /// (x, y) is the top-left position of the rendered text.
+    pub fn draw_text(
+        &mut self,
+        font: &FontSystem,
+        x: u32,
+        y: u32,
+        text: &str,
+        size: f32,
+        color: Color,
+    ) {
+        let rasterized = font.rasterize(text, size, (color.r, color.g, color.b, color.a));
+        if rasterized.width == 0 || rasterized.height == 0 {
+            return;
+        }
 
-        for x in line_start..line_end {
-            if x < self.width {
-                let index = (text_line_y * self.width + x) as usize;
-                if index < self.buffer.len() {
-                    self.buffer[index] = BLACK.to_u32();
+        for py in 0..rasterized.height {
+            for px in 0..rasterized.width {
+                let alpha = rasterized.pixels[py * rasterized.width + px];
+                if alpha == 0 {
+                    continue;
+                }
+                let dest_x = x as i32 + rasterized.x_offset + px as i32;
+                let dest_y = y as i32 + rasterized.y_offset + py as i32;
+                if dest_x >= 0
+                    && dest_y >= 0
+                    && (dest_x as u32) < self.width
+                    && (dest_y as u32) < self.height
+                {
+                    let idx = (dest_y as u32 * self.width + dest_x as u32) as usize;
+                    let bg = self.buffer[idx];
+                    let br = (bg >> 16) & 0xFF;
+                    let bg_g = (bg >> 8) & 0xFF;
+                    let bb = bg & 0xFF;
+                    let a = alpha as u32;
+                    let inv_a = 255 - a;
+                    let r = ((color.r as u32 * a + br * inv_a) / 255) as u8;
+                    let g = ((color.g as u32 * a + bg_g * inv_a) / 255) as u8;
+                    let b = ((color.b as u32 * a + bb * inv_a) / 255) as u8;
+                    self.buffer[idx] = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
                 }
             }
         }
@@ -351,5 +387,44 @@ mod tests {
 
         let forward = layout::forward_button();
         assert!(forward.x > back.x); // Forward button should be to the right of back
+    }
+
+    fn create_test_font() -> crate::font::FontSystem {
+        crate::font::FontSystem::new().expect("Failed to load system font for tests")
+    }
+
+    #[test]
+    fn test_renderer_draw_text() {
+        let mut renderer = Renderer::new(200, 100);
+        renderer.clear(WHITE);
+        let font = create_test_font();
+        renderer.draw_text(&font, 10, 10, "Hello", 16.0, BLACK);
+
+        // The pixel buffer should have non-white pixels where text was drawn
+        let has_ink = renderer.buffer.iter().any(|&p| p != WHITE.to_u32());
+        assert!(has_ink, "Drawing text should modify pixels in the buffer");
+    }
+
+    #[test]
+    fn test_draw_text_empty() {
+        let mut renderer = Renderer::new(100, 50);
+        renderer.clear(WHITE);
+        let font = create_test_font();
+        renderer.draw_text(&font, 10, 10, "", 16.0, BLACK);
+
+        // Buffer should remain all white
+        let all_white = renderer.buffer.iter().all(|&p| p == WHITE.to_u32());
+        assert!(all_white, "Empty text should not modify the buffer");
+    }
+
+    #[test]
+    fn test_draw_text_clipping() {
+        let mut renderer = Renderer::new(50, 50);
+        renderer.clear(WHITE);
+        let font = create_test_font();
+        // Draw way off-screen - should not panic
+        renderer.draw_text(&font, 10000, 10000, "Off screen", 16.0, BLACK);
+        let all_white = renderer.buffer.iter().all(|&p| p == WHITE.to_u32());
+        assert!(all_white, "Off-screen text should not modify the buffer");
     }
 }

@@ -1,4 +1,5 @@
 mod error;
+mod font;
 mod html;
 mod network;
 mod renderer;
