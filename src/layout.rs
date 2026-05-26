@@ -38,6 +38,21 @@ impl LayoutRect {
             height: 0.0,
         }
     }
+
+    /// Check if this rectangle intersects with another
+    #[allow(dead_code)]
+    pub fn intersects(&self, other: &LayoutRect) -> bool {
+        self.x < other.x + other.width
+            && self.x + self.width > other.x
+            && self.y < other.y + other.height
+            && self.y + self.height > other.y
+    }
+
+    /// Check if a point is inside this rectangle
+    #[allow(dead_code)]
+    pub fn contains(&self, px: f32, py: f32) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
 }
 
 /// The type of layout box.
@@ -54,6 +69,21 @@ pub struct LayoutBox {
     pub rect: LayoutRect,
     pub box_type: BoxType,
     pub children: Vec<LayoutBox>,
+    /// The text content for text layout boxes.
+    #[allow(dead_code)]
+    pub text: Option<String>,
+    /// Foreground color (r, g, b, a).
+    #[allow(dead_code)]
+    pub color: Option<(u8, u8, u8, u8)>,
+    /// Background color (r, g, b, a).
+    #[allow(dead_code)]
+    pub background_color: Option<(u8, u8, u8, u8)>,
+    /// Font size in pixels.
+    #[allow(dead_code)]
+    pub font_size: Option<f32>,
+    /// If this box is a link, the href URL.
+    #[allow(dead_code)]
+    pub is_link: Option<String>,
 }
 
 impl LayoutBox {
@@ -62,12 +92,29 @@ impl LayoutBox {
             rect,
             box_type,
             children: Vec::new(),
+            text: None,
+            color: None,
+            background_color: None,
+            font_size: None,
+            is_link: None,
         }
     }
 
     pub fn with_children(mut self, children: Vec<LayoutBox>) -> Self {
         self.children = children;
         self
+    }
+
+    /// Add a child box
+    #[allow(dead_code)]
+    pub fn add_child(&mut self, child: LayoutBox) {
+        self.children.push(child);
+    }
+
+    /// Get the total number of boxes in this subtree
+    #[allow(dead_code)]
+    pub fn count(&self) -> usize {
+        1 + self.children.iter().map(|c| c.count()).sum::<usize>()
     }
 }
 
@@ -95,6 +142,15 @@ impl<'dom> StyledNode<'dom> {
     /// Get a style value by property name.
     pub fn get_value(&self, property: &str) -> Option<&CssValue> {
         self.styles.get(property)
+    }
+
+    /// Extract a color value from a CSS property.
+    #[allow(dead_code)]
+    pub fn get_color(&self, property: &str) -> Option<(u8, u8, u8, u8)> {
+        match self.get_value(property) {
+            Some(CssValue::Color(r, g, b, a)) => Some((*r, *g, *b, *a)),
+            _ => None,
+        }
     }
 
     /// Get the display property (defaults to 'inline').
@@ -323,6 +379,11 @@ impl LayoutEngine {
                 rect: child_rect,
                 box_type: child_layout.box_type,
                 children: child_layout.children,
+                text: child_layout.text,
+                color: child_layout.color,
+                background_color: child_layout.background_color,
+                font_size: child_layout.font_size,
+                is_link: child_layout.is_link,
             });
 
             cursor_y += child_rect.height;
@@ -332,7 +393,33 @@ impl LayoutEngine {
         let content_height = cursor_y + padding_bottom;
         rect.height = content_height + margin_top + margin_bottom;
 
-        LayoutBox::new(rect, BoxType::Block).with_children(children)
+        // Extract metadata from styled node
+        let background_color = styled
+            .get_color("background-color")
+            .or_else(|| styled.get_color("background"));
+        let color = styled.get_color("color");
+        let font_size = Some(styled.font_size());
+
+        // Detect <a> elements for link tracking
+        let is_link = if let NodeKind::Element { tag, attrs } = &styled.node.kind {
+            if tag == "a" {
+                attrs
+                    .iter()
+                    .find(|(name, _)| name == "href")
+                    .map(|(_, value)| value.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut result = LayoutBox::new(rect, BoxType::Block).with_children(children);
+        result.background_color = background_color;
+        result.color = color;
+        result.font_size = font_size;
+        result.is_link = is_link;
+        result
     }
 
     /// Layout an inline-level element with text wrapping.
@@ -384,6 +471,11 @@ impl LayoutEngine {
                             rect: text_rect,
                             box_type: BoxType::Inline,
                             children: Vec::new(),
+                            text: text_layout.text,
+                            color: text_layout.color,
+                            background_color: text_layout.background_color,
+                            font_size: text_layout.font_size,
+                            is_link: text_layout.is_link,
                         });
 
                         cursor_x += text_rect.width;
@@ -409,6 +501,11 @@ impl LayoutEngine {
                         rect: child_rect,
                         box_type: child_layout.box_type,
                         children: child_layout.children,
+                        text: child_layout.text,
+                        color: child_layout.color,
+                        background_color: child_layout.background_color,
+                        font_size: child_layout.font_size,
+                        is_link: child_layout.is_link,
                     });
 
                     cursor_x += child_rect.width;
@@ -421,7 +518,33 @@ impl LayoutEngine {
         let content_height = cursor_y + max_line_height + padding_bottom;
         rect.height = content_height + margin_top + margin_bottom;
 
-        LayoutBox::new(rect, BoxType::Inline).with_children(children)
+        // Extract metadata from styled node
+        let background_color = styled
+            .get_color("background-color")
+            .or_else(|| styled.get_color("background"));
+        let color = styled.get_color("color");
+        let node_font_size = Some(styled.font_size());
+
+        // Detect <a> elements for link tracking
+        let is_link = if let NodeKind::Element { tag, attrs } = &styled.node.kind {
+            if tag == "a" {
+                attrs
+                    .iter()
+                    .find(|(name, _)| name == "href")
+                    .map(|(_, value)| value.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut result = LayoutBox::new(rect, BoxType::Inline).with_children(children);
+        result.background_color = background_color;
+        result.color = color;
+        result.font_size = node_font_size;
+        result.is_link = is_link;
+        result
     }
 
     /// Layout text with line breaking and wrapping.
@@ -453,10 +576,12 @@ impl LayoutEngine {
                 // Explicit line break
                 if !current_line.is_empty() {
                     let width = current_line.len() as f32 * char_width;
-                    layouts.push(LayoutBox::new(
+                    let mut lb = LayoutBox::new(
                         LayoutRect::new(0.0, 0.0, width, line_height),
                         BoxType::Inline,
-                    ));
+                    );
+                    lb.text = Some(current_line.clone());
+                    layouts.push(lb);
                     current_line.clear();
                 }
                 cursor_x = 0.0;
@@ -468,7 +593,7 @@ impl LayoutEngine {
                 // Word boundary
                 if !current_line.is_empty() {
                     let width = current_line.len() as f32 * char_width;
-                    layouts.push(LayoutBox::new(
+                    let mut lb = LayoutBox::new(
                         LayoutRect::new(
                             if line_start { 0.0 } else { cursor_x },
                             0.0,
@@ -476,7 +601,9 @@ impl LayoutEngine {
                             line_height,
                         ),
                         BoxType::Inline,
-                    ));
+                    );
+                    lb.text = Some(current_line.clone());
+                    layouts.push(lb);
                     cursor_x += width;
                     current_line.clear();
                     line_start = false;
@@ -492,10 +619,12 @@ impl LayoutEngine {
             if cursor_x + current_width > max_width && !current_line.is_empty() {
                 // Wrap the word
                 let width = current_line.len() as f32 * char_width;
-                layouts.push(LayoutBox::new(
+                let mut lb = LayoutBox::new(
                     LayoutRect::new(0.0, 0.0, width, line_height),
                     BoxType::Inline,
-                ));
+                );
+                lb.text = Some(current_line.clone());
+                layouts.push(lb);
                 current_line.clear();
                 cursor_x = 0.0;
                 line_start = true;
@@ -505,7 +634,7 @@ impl LayoutEngine {
         // Add remaining text
         if !current_line.is_empty() {
             let width = current_line.len() as f32 * char_width;
-            layouts.push(LayoutBox::new(
+            let mut lb = LayoutBox::new(
                 LayoutRect::new(
                     if line_start { 0.0 } else { cursor_x },
                     0.0,
@@ -513,7 +642,9 @@ impl LayoutEngine {
                     line_height,
                 ),
                 BoxType::Inline,
-            ));
+            );
+            lb.text = Some(current_line.clone());
+            layouts.push(lb);
         }
 
         layouts

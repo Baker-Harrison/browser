@@ -1209,6 +1209,11 @@ impl HtmlDocument {
         })
     }
 
+    /// Access the parsed DOM tree
+    pub fn dom(&self) -> &Dom {
+        &self.dom
+    }
+
     /// Extract the title from the HTML document
     ///
     /// # Returns

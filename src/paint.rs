@@ -5,74 +5,9 @@
 
 use std::sync::Arc;
 
-/// A rectangle in layout coordinates
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LayoutRect {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-impl LayoutRect {
-    pub const fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        LayoutRect {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-
-    /// Check if this rectangle intersects with another
-    pub fn intersects(&self, other: &LayoutRect) -> bool {
-        self.x < other.x + other.width
-            && self.x + self.width > other.x
-            && self.y < other.y + other.height
-            && self.y + self.height > other.y
-    }
-
-    /// Check if a point is inside this rectangle
-    pub fn contains(&self, px: f32, py: f32) -> bool {
-        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
-    }
-}
-
-/// Box type for layout nodes
-#[derive(Debug, Clone, PartialEq)]
-pub enum BoxType {
-    Block,
-    Inline,
-    Anonymous,
-}
-
-/// A box in the layout tree
-#[derive(Debug, Clone, PartialEq)]
-pub struct LayoutBox {
-    pub rect: LayoutRect,
-    pub box_type: BoxType,
-    pub children: Vec<LayoutBox>,
-}
-
-impl LayoutBox {
-    pub fn new(rect: LayoutRect, box_type: BoxType) -> Self {
-        LayoutBox {
-            rect,
-            box_type,
-            children: Vec::new(),
-        }
-    }
-
-    /// Add a child box
-    pub fn add_child(&mut self, child: LayoutBox) {
-        self.children.push(child);
-    }
-
-    /// Get the total number of boxes in this subtree
-    pub fn count(&self) -> usize {
-        1 + self.children.iter().map(|c| c.count()).sum::<usize>()
-    }
-}
+// Re-export layout types so existing consumers (e.g. renderer.rs) can
+// still import LayoutRect, BoxType, LayoutBox from crate::paint.
+pub use crate::layout::{BoxType, LayoutBox, LayoutRect};
 
 /// Display commands for rendering
 #[derive(Debug, Clone, PartialEq)]
@@ -127,19 +62,35 @@ impl DefaultPainter {
         // Push clip for this box
         commands.push(DisplayCommand::ClipRect(layout.rect));
 
-        // For now, we'll emit a simple fill rect for each box
-        // In a full implementation, this would use the styled properties
-        // to determine colors, text, images, etc.
-        let color = match layout.box_type {
-            BoxType::Block => (200, 200, 200, 255),     // Gray for blocks
-            BoxType::Inline => (255, 255, 255, 255),    // White for inline
-            BoxType::Anonymous => (240, 240, 240, 255), // Light gray for anonymous
+        // Use background_color metadata if available, otherwise fall back to
+        // box-type-based default colors for backward compatibility.
+        let bg_color = if let Some(color) = layout.background_color {
+            color
+        } else {
+            match layout.box_type {
+                BoxType::Block => (200, 200, 200, 255),
+                BoxType::Inline => (255, 255, 255, 255),
+                BoxType::Anonymous => (240, 240, 240, 255),
+            }
         };
 
         commands.push(DisplayCommand::FillRect {
             rect: layout.rect,
-            color,
+            color: bg_color,
         });
+
+        // Draw text if present
+        if let Some(ref text) = layout.text {
+            let text_color = layout.color.unwrap_or((0, 0, 0, 255));
+            let text_size = layout.font_size.unwrap_or(16.0);
+            commands.push(DisplayCommand::DrawText {
+                x: layout.rect.x,
+                y: layout.rect.y,
+                text: text.clone(),
+                size: text_size,
+                color: text_color,
+            });
+        }
 
         // Recursively paint children
         for child in &layout.children {
