@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 use crate::error::Result;
+use crate::html::Node;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -26,6 +27,92 @@ pub struct Selector {
     pub tag: Option<String>,
     pub id: Option<String>,
     pub class: Option<String>,
+}
+
+impl Selector {
+    /// Check if this selector matches a given DOM node.
+    pub fn matches_node(&self, node: &Node) -> bool {
+        // Check tag name match
+        if let Some(ref tag) = self.tag {
+            if !matches_tag(node, tag) {
+                return false;
+            }
+        }
+
+        // Check ID match
+        if let Some(ref id) = self.id {
+            if let Some(node_id) = get_node_id(node) {
+                if node_id != *id {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        // Check class match
+        if let Some(ref class) = self.class {
+            if let Some(node_classes) = get_node_classes(node) {
+                if !node_classes.contains(class) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Calculate the specificity of this selector.
+    /// Returns a tuple (id_count, class_count, tag_count).
+    pub fn specificity(&self) -> (u32, u32, u32) {
+        let id_count = if self.id.is_some() { 1 } else { 0 };
+        let class_count = if self.class.is_some() { 1 } else { 0 };
+        let tag_count = if self.tag.is_some() { 1 } else { 0 };
+        (id_count, class_count, tag_count)
+    }
+}
+
+/// Extract the ID attribute from a DOM node.
+fn get_node_id(node: &Node) -> Option<String> {
+    match &node.kind {
+        crate::html::NodeKind::Element { tag: _, attrs } => {
+            for (name, value) in attrs {
+                if name == "id" {
+                    return Some(value.clone());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Extract all class names from a DOM node's class attribute.
+fn get_node_classes(node: &Node) -> Option<Vec<String>> {
+    match &node.kind {
+        crate::html::NodeKind::Element { tag: _, attrs } => {
+            for (name, value) in attrs {
+                if name == "class" {
+                    return Some(value.split_whitespace().map(String::from).collect());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Check if a DOM node matches a given tag name.
+fn matches_tag(node: &Node, tag: &str) -> bool {
+    match &node.kind {
+        crate::html::NodeKind::Element {
+            tag: node_tag,
+            attrs: _,
+        } => node_tag == tag,
+        _ => false,
+    }
 }
 
 /// A CSS declaration with a property and parsed value.
@@ -786,5 +873,356 @@ mod tests {
             stylesheet.rules[0].declarations[0].value,
             CssValue::Color(255, 0, 0, 255)
         );
+    }
+
+    // ════════════════════════════
+    // Selector Matching Tests
+    // ════════════════════════════
+
+    #[test]
+    fn test_tag_selector_match() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: None,
+            class: None,
+        };
+
+        let div_node = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![],
+            },
+            children: vec![],
+        };
+
+        let span_node = Node {
+            kind: NodeKind::Element {
+                tag: "span".to_string(),
+                attrs: vec![],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&div_node));
+        assert!(!selector.matches_node(&span_node));
+    }
+
+    #[test]
+    fn test_id_selector_match() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: None,
+            id: Some("myid".to_string()),
+            class: None,
+        };
+
+        let node_with_id = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("id".to_string(), "myid".to_string())],
+            },
+            children: vec![],
+        };
+
+        let node_without_id = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![],
+            },
+            children: vec![],
+        };
+
+        let node_with_different_id = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("id".to_string(), "otherid".to_string())],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&node_with_id));
+        assert!(!selector.matches_node(&node_without_id));
+        assert!(!selector.matches_node(&node_with_different_id));
+    }
+
+    #[test]
+    fn test_class_selector_match() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: None,
+            id: None,
+            class: Some("myclass".to_string()),
+        };
+
+        let node_with_class = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("class".to_string(), "myclass".to_string())],
+            },
+            children: vec![],
+        };
+
+        let node_without_class = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![],
+            },
+            children: vec![],
+        };
+
+        let node_with_different_class = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("class".to_string(), "otherclass".to_string())],
+            },
+            children: vec![],
+        };
+
+        let node_with_multiple_classes = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("class".to_string(), "foo bar myclass baz".to_string())],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&node_with_class));
+        assert!(!selector.matches_node(&node_without_class));
+        assert!(!selector.matches_node(&node_with_different_class));
+        assert!(selector.matches_node(&node_with_multiple_classes));
+    }
+
+    #[test]
+    fn test_combined_selector_match() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: Some("myid".to_string()),
+            class: Some("myclass".to_string()),
+        };
+
+        let matching_node = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "myid".to_string()),
+                    ("class".to_string(), "myclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        let wrong_tag = Node {
+            kind: NodeKind::Element {
+                tag: "span".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "myid".to_string()),
+                    ("class".to_string(), "myclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        let wrong_id = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "otherid".to_string()),
+                    ("class".to_string(), "myclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        let wrong_class = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "myid".to_string()),
+                    ("class".to_string(), "otherclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&matching_node));
+        assert!(!selector.matches_node(&wrong_tag));
+        assert!(!selector.matches_node(&wrong_id));
+        assert!(!selector.matches_node(&wrong_class));
+    }
+
+    #[test]
+    fn test_selector_specificity() {
+        let tag_only = Selector {
+            tag: Some("div".to_string()),
+            id: None,
+            class: None,
+        };
+        assert_eq!(tag_only.specificity(), (0, 0, 1));
+
+        let id_only = Selector {
+            tag: None,
+            id: Some("myid".to_string()),
+            class: None,
+        };
+        assert_eq!(id_only.specificity(), (1, 0, 0));
+
+        let class_only = Selector {
+            tag: None,
+            id: None,
+            class: Some("myclass".to_string()),
+        };
+        assert_eq!(class_only.specificity(), (0, 1, 0));
+
+        let combined = Selector {
+            tag: Some("div".to_string()),
+            id: Some("myid".to_string()),
+            class: Some("myclass".to_string()),
+        };
+        assert_eq!(combined.specificity(), (1, 1, 1));
+
+        let universal = Selector {
+            tag: None,
+            id: None,
+            class: None,
+        };
+        assert_eq!(universal.specificity(), (0, 0, 0));
+    }
+
+    #[test]
+    fn test_selector_does_not_match_text_node() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: None,
+            class: None,
+        };
+
+        let text_node = Node {
+            kind: NodeKind::Text("Hello".to_string()),
+            children: vec![],
+        };
+
+        assert!(!selector.matches_node(&text_node));
+    }
+
+    #[test]
+    fn test_selector_does_not_match_document_node() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: None,
+            class: None,
+        };
+
+        let document_node = Node {
+            kind: NodeKind::Document,
+            children: vec![],
+        };
+
+        assert!(!selector.matches_node(&document_node));
+    }
+
+    #[test]
+    fn test_selector_with_tag_and_id() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: Some("myid".to_string()),
+            class: None,
+        };
+
+        let matching_node = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("id".to_string(), "myid".to_string())],
+            },
+            children: vec![],
+        };
+
+        let wrong_tag = Node {
+            kind: NodeKind::Element {
+                tag: "span".to_string(),
+                attrs: vec![("id".to_string(), "myid".to_string())],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&matching_node));
+        assert!(!selector.matches_node(&wrong_tag));
+    }
+
+    #[test]
+    fn test_selector_with_tag_and_class() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: Some("div".to_string()),
+            id: None,
+            class: Some("myclass".to_string()),
+        };
+
+        let matching_node = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![("class".to_string(), "myclass".to_string())],
+            },
+            children: vec![],
+        };
+
+        let wrong_tag = Node {
+            kind: NodeKind::Element {
+                tag: "span".to_string(),
+                attrs: vec![("class".to_string(), "myclass".to_string())],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&matching_node));
+        assert!(!selector.matches_node(&wrong_tag));
+    }
+
+    #[test]
+    fn test_selector_with_id_and_class() {
+        use crate::html::{Node, NodeKind};
+
+        let selector = Selector {
+            tag: None,
+            id: Some("myid".to_string()),
+            class: Some("myclass".to_string()),
+        };
+
+        let matching_node = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "myid".to_string()),
+                    ("class".to_string(), "myclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        let wrong_id = Node {
+            kind: NodeKind::Element {
+                tag: "div".to_string(),
+                attrs: vec![
+                    ("id".to_string(), "otherid".to_string()),
+                    ("class".to_string(), "myclass".to_string()),
+                ],
+            },
+            children: vec![],
+        };
+
+        assert!(selector.matches_node(&matching_node));
+        assert!(!selector.matches_node(&wrong_id));
     }
 }

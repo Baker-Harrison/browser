@@ -11,7 +11,7 @@ agent or developer as long as it satisfies the trait defined here.
 
 ## Data flow overview
 
-```
+```text
 URL string
     │
     ▼
@@ -260,6 +260,7 @@ pub trait Compositor {
 ## 8. JavaScript Engine (`src/js/`) — FUTURE / DEFER
 
 This is the hardest component. Options in order of build time:
+
 1. **Defer** — ship without JS first, cover 40% of the web
 2. **Embed V8 via `rusty_v8`** — fast integration, large binary
 3. **Embed QuickJS via `rquickjs`** — small, embeddable, ES2020 compliant
@@ -272,12 +273,13 @@ This is the hardest component. Options in order of build time:
 ## 9. Window / Chrome (`src/window.rs`) — EXISTS
 
 No trait needed here — this is the top-level orchestrator. Its job is:
+
 1. Own the winit event loop
 2. Receive input events (keyboard, mouse) and route them to the right subsystem
 3. Call each pipeline stage in order on navigation
 4. Blit the final pixel buffer via softbuffer
 
-```
+```text
 navigate(url):
   response  = Fetcher::fetch(url)
   dom       = HtmlParser::parse(response.body)
@@ -293,14 +295,14 @@ navigate(url):
 
 ## Build Order (recommended for parallel agents)
 
-| Priority | Component | Depends on | Parallelizable? |
-|----------|-----------|------------|-----------------|
-| 1 | HTML tokenizer + parser | nothing | yes |
-| 1 | CSS parser | nothing | yes |
-| 1 | Network `RawResponse` refactor | nothing | yes |
-| 2 | Style engine | HTML parser + CSS parser | after P1 |
-| 2 | Layout engine (block flow only) | Style engine | after P1 |
-| 3 | Paint / display list | Layout engine | after P2 |
-| 3 | Font rendering (fontdue) | Renderer | yes |
-| 4 | Compositor integration | All above | after P3 |
-| 5 | JS engine (rquickjs) | DOM | after P4 |
+| Priority | Component                      | Depends on                 | Parallelizable? |
+|----------|--------------------------------|-----------------------------|-----------------|
+| 1        | HTML tokenizer + parser        | nothing                     | yes             |
+| 1        | CSS parser                     | nothing                     | yes             |
+| 1        | Network `RawResponse` refactor | nothing                     | yes             |
+| 2        | Style engine                   | HTML parser + CSS parser    | after P1        |
+| 2        | Layout engine (block flow only) | Style engine                | after P1        |
+| 3        | Paint / display list           | Layout engine               | after P2        |
+| 3        | Font rendering (fontdue)       | Renderer                    | yes             |
+| 4        | Compositor integration         | All above                   | after P3        |
+| 5        | JS engine (rquickjs)           | DOM                         | after P4        |

@@ -66,6 +66,13 @@ pub enum BrowserError {
     #[error("Failed to write to storage: {0}")]
     StorageWriteError(String),
 
+    /// Image errors
+    #[error("Unsupported image format: {0}")]
+    UnsupportedImageFormat(String),
+
+    #[error("Image decode error: {0}")]
+    ImageDecodeError(String),
+
     /// IO errors
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),

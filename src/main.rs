@@ -1,9 +1,22 @@
+#![allow(dead_code)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::single_match)]
+#![allow(clippy::manual_strip)]
+#![allow(clippy::implicit_saturating_sub)]
+
+mod cookie;
 mod css;
 mod error;
 mod font;
+mod history;
 mod html;
+mod image;
+mod layout;
 mod network;
+mod paint;
 mod renderer;
+mod storage;
+mod style;
 mod url;
 mod window;
 

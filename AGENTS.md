@@ -1,6 +1,6 @@
 # Project Purpose
 
-The purpose of this project is to build a full browser from scratch. It is a cross-platform browser that will be available for multiple operating systems.
+The purpose of this project is to build a full browser from scratch. It is a cross-platform browser that will be available for multiple operating systems. NEVER LINT MARKDOWN FILES
 
 # Architecture Decisions
 

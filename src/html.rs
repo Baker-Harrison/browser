@@ -536,7 +536,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(kind: NodeKind) -> Self {
+    pub fn new(kind: NodeKind) -> Self {
         Node {
             kind,
             children: Vec::new(),
@@ -587,8 +587,11 @@ impl Dom {
     ///
     /// Supports:
     /// - Tag name selectors: `"title"`, `"a"`, `"img"`
+    /// - ID selectors: `"#myid"`, `"div#myid"`
+    /// - Class selectors: `".myclass"`, `"div.myclass"`
     /// - Attribute selectors: `"a[href]"`, `"img[src]"`
-    /// - Comma-separated: `"h1, h2, h3"``
+    /// - Combined selectors: `"div#myid.myclass[href]"`
+    /// - Comma-separated: `"h1, h2, h3"`
     pub fn query_selector_all(&self, selector: &str) -> Vec<&Node> {
         let parts: Vec<&str> = selector
             .split(',')
@@ -598,8 +601,8 @@ impl Dom {
         let mut results = Vec::new();
 
         for part in &parts {
-            let (tag_name, attr_name) = parse_simple_selector(part);
-            collect_matching(&self.root, &tag_name, attr_name.as_deref(), &mut results);
+            let component = parse_simple_selector(part);
+            collect_matching(&self.root, &component, &mut results);
         }
 
         results
@@ -665,41 +668,131 @@ fn write_node(node: &Node, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Re
     }
 }
 
-/// Parse a simple CSS selector like `"tag"` or `"tag[attr]"` or `"[attr]"`.
-fn parse_simple_selector(selector: &str) -> (String, Option<String>) {
+/// Represents a parsed CSS selector with tag, id, class, and attribute components.
+#[derive(Debug, Clone, PartialEq, Default)]
+struct SelectorComponent {
+    tag: Option<String>,
+    id: Option<String>,
+    class: Option<String>,
+    attr: Option<String>,
+}
+
+/// Parse a simple CSS selector supporting tag, ID, class, and attribute selectors.
+///
+/// Supported patterns:
+/// - Tag: `"div"`, `"a"`
+/// - ID: `"#myid"`
+/// - Class: `".myclass"`
+/// - Attribute: `"[href]"`, `"a[href]"`
+/// - Combined: `"div#myid"`, `"div.myclass"`, `"#myid.myclass"`, `"div#myid.myclass[href]"`
+fn parse_simple_selector(selector: &str) -> SelectorComponent {
     let selector = selector.trim();
+    let mut component = SelectorComponent::default();
+
+    // Handle attribute selector [attr]
     if let Some(bracket_start) = selector.find('[') {
-        let tag = selector[..bracket_start].trim().to_string();
+        let before_attr = &selector[..bracket_start].trim();
         let inner = &selector[bracket_start + 1..];
         if let Some(bracket_end) = inner.find(']') {
-            let attr = inner[..bracket_end].trim().to_string();
-            (tag, Some(attr))
-        } else {
-            (tag, None)
+            component.attr = Some(inner[..bracket_end].trim().to_string());
         }
+        // Parse tag/id/class from the part before [attr]
+        parse_selector_parts(before_attr, &mut component);
     } else {
-        (selector.to_string(), None)
+        // No attribute selector, parse the whole string
+        parse_selector_parts(selector, &mut component);
+    }
+
+    component
+}
+
+/// Parse tag, ID, and class from a selector string (without attribute part).
+fn parse_selector_parts(s: &str, component: &mut SelectorComponent) {
+    let mut chars = s.chars().peekable();
+    let mut current = String::new();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '#' => {
+                // ID selector
+                if !current.is_empty() {
+                    component.tag = Some(std::mem::take(&mut current));
+                }
+                // Collect the ID value
+                while let Some(&next) = chars.peek() {
+                    if next.is_alphanumeric() || next == '-' || next == '_' {
+                        current.push(chars.next().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                component.id = Some(std::mem::take(&mut current));
+            }
+            '.' => {
+                // Class selector
+                if !current.is_empty() {
+                    component.tag = Some(std::mem::take(&mut current));
+                }
+                // Collect the class value
+                while let Some(&next) = chars.peek() {
+                    if next.is_alphanumeric() || next == '-' || next == '_' {
+                        current.push(chars.next().unwrap());
+                    } else {
+                        break;
+                    }
+                }
+                component.class = Some(std::mem::take(&mut current));
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    // If there's anything left in current, it's the tag name
+    if !current.is_empty() {
+        component.tag = Some(current);
     }
 }
 
 fn collect_matching<'a>(
     node: &'a Node,
-    tag_name: &str,
-    attr_name: Option<&str>,
+    component: &SelectorComponent,
     results: &mut Vec<&'a Node>,
 ) {
     if let NodeKind::Element { tag, attrs } = &node.kind {
-        let tag_matches = tag_name.is_empty() || tag == tag_name;
-        let attr_matches = match attr_name {
+        // Check tag match
+        let tag_matches = match &component.tag {
             None => true,
-            Some(an) => attrs.iter().any(|(k, _)| k == an),
+            Some(t) => tag == t,
         };
-        if tag_matches && attr_matches {
+
+        // Check ID match
+        let id_matches = match &component.id {
+            None => true,
+            Some(id) => attrs.iter().any(|(k, v)| k == "id" && v == id),
+        };
+
+        // Check class match
+        let class_matches = match &component.class {
+            None => true,
+            Some(class) => attrs
+                .iter()
+                .any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == class)),
+        };
+
+        // Check attribute match
+        let attr_matches = match &component.attr {
+            None => true,
+            Some(attr) => attrs.iter().any(|(k, _)| k == attr),
+        };
+
+        if tag_matches && id_matches && class_matches && attr_matches {
             results.push(node);
         }
     }
     for child in &node.children {
-        collect_matching(child, tag_name, attr_name, results);
+        collect_matching(child, component, results);
     }
 }
 
@@ -1561,5 +1654,292 @@ mod tests {
         }
         let dom = parse_html("<html><body><div><span>Target</span></div></body></html>");
         assert!(find_span(&dom.root));
+    }
+
+    // ============================================================
+    // DOM Query API Tests - Tag Selectors
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_tag_simple() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all("div");
+        assert_eq!(results.len(), 1);
+        if let NodeKind::Element { tag, .. } = &results[0].kind {
+            assert_eq!(tag, "div");
+        }
+    }
+
+    #[test]
+    fn test_query_selector_tag_multiple() {
+        let dom = parse_html("<html><body><p>First</p><p>Second</p><p>Third</p></body></html>");
+        let results = dom.query_selector_all("p");
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_query_selector_tag_none() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all("span");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_selector_tag_nested() {
+        let dom = parse_html("<html><body><div><p>Nested</p></div></body></html>");
+        let results = dom.query_selector_all("p");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_tag_comma_separated() {
+        let dom =
+            parse_html("<html><body><h1>Title</h1><h2>Subtitle</h2><p>Text</p></body></html>");
+        let results = dom.query_selector_all("h1, h2");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_query_selector_returns_first() {
+        let dom = parse_html("<html><body><p>First</p><p>Second</p></body></html>");
+        let results = dom.query_selector("p");
+        assert_eq!(results.len(), 1);
+        if let NodeKind::Element { tag, .. } = &results[0].kind {
+            assert_eq!(tag, "p");
+        }
+    }
+
+    // ============================================================
+    // DOM Query API Tests - ID Selectors
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_id_simple() {
+        let dom = parse_html("<html><body><div id=\"main\">Content</div></body></html>");
+        let results = dom.query_selector_all("#main");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_id_multiple() {
+        let dom = parse_html(
+            "<html><body><div id=\"first\">First</div><div id=\"second\">Second</div></body></html>",
+        );
+        let results = dom.query_selector_all("#first");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_id_none() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all("#nonexistent");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_selector_id_nested() {
+        let dom = parse_html("<html><body><div><p id=\"nested\">Nested</p></div></body></html>");
+        let results = dom.query_selector_all("#nested");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_tag_with_id() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\">Content</div><p id=\"main\">Text</p></body></html>",
+        );
+        let results = dom.query_selector_all("div#main");
+        assert_eq!(results.len(), 1);
+        if let NodeKind::Element { tag, .. } = &results[0].kind {
+            assert_eq!(tag, "div");
+        }
+    }
+
+    #[test]
+    fn test_query_selector_tag_with_id_mismatch() {
+        let dom = parse_html("<html><body><div id=\"main\">Content</div></body></html>");
+        let results = dom.query_selector_all("p#main");
+        assert_eq!(results.len(), 0);
+    }
+
+    // ============================================================
+    // DOM Query API Tests - Class Selectors
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_class_simple() {
+        let dom = parse_html("<html><body><div class=\"container\">Content</div></body></html>");
+        let results = dom.query_selector_all(".container");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_class_multiple() {
+        let dom = parse_html(
+            "<html><body><div class=\"box\">Box 1</div><div class=\"box\">Box 2</div></body></html>",
+        );
+        let results = dom.query_selector_all(".box");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_query_selector_class_none() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all(".nonexistent");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_selector_class_multiple_classes() {
+        let dom =
+            parse_html("<html><body><div class=\"box container\">Content</div></body></html>");
+        let results = dom.query_selector_all(".container");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_tag_with_class() {
+        let dom = parse_html(
+            "<html><body><div class=\"box\">Div</div><p class=\"box\">Para</p></body></html>",
+        );
+        let results = dom.query_selector_all("div.box");
+        assert_eq!(results.len(), 1);
+        if let NodeKind::Element { tag, .. } = &results[0].kind {
+            assert_eq!(tag, "div");
+        }
+    }
+
+    #[test]
+    fn test_query_selector_tag_with_class_mismatch() {
+        let dom = parse_html("<html><body><div class=\"box\">Content</div></body></html>");
+        let results = dom.query_selector_all("p.box");
+        assert_eq!(results.len(), 0);
+    }
+
+    // ============================================================
+    // DOM Query API Tests - Combined Selectors
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_tag_id_class() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\" class=\"container\">Content</div></body></html>",
+        );
+        let results = dom.query_selector_all("div#main.container");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_id_class() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\" class=\"container\">Content</div></body></html>",
+        );
+        let results = dom.query_selector_all("#main.container");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_tag_id_class_attr() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\" class=\"container\" data-test=\"value\">Content</div></body></html>",
+        );
+        let results = dom.query_selector_all("div#main.container[data-test]");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_combined_mismatch() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\" class=\"container\">Content</div></body></html>",
+        );
+        let results = dom.query_selector_all("div#other.container");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_selector_combined_partial_match() {
+        let dom = parse_html(
+            "<html><body><div id=\"main\" class=\"container\">Content</div></body></html>",
+        );
+        let results = dom.query_selector_all("div#main");
+        assert_eq!(results.len(), 1);
+    }
+
+    // ============================================================
+    // DOM Query API Tests - Attribute Selectors (existing functionality)
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_attr_simple() {
+        let dom = parse_html("<html><body><a href=\"https://example.com\">Link</a></body></html>");
+        let results = dom.query_selector_all("[href]");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_tag_attr() {
+        let dom = parse_html("<html><body><a href=\"https://example.com\">Link</a></body></html>");
+        let results = dom.query_selector_all("a[href]");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_query_selector_attr_none() {
+        let dom = parse_html("<html><body><a>Link</a></body></html>");
+        let results = dom.query_selector_all("[href]");
+        assert_eq!(results.len(), 0);
+    }
+
+    // ============================================================
+    // DOM Query API Tests - Complex Real-world Scenarios
+    // ============================================================
+
+    #[test]
+    fn test_query_selector_complex_html() {
+        let html = r#"
+            <html>
+                <head><title>Test</title></head>
+                <body>
+                    <header id="header" class="main-header">
+                        <nav class="navigation">
+                            <a href="/home" class="nav-link">Home</a>
+                            <a href="/about" class="nav-link">About</a>
+                        </nav>
+                    </header>
+                    <main id="content" class="container">
+                        <article class="post">
+                            <h1 class="title">Article Title</h1>
+                            <p class="text">Content here</p>
+                        </article>
+                    </main>
+                    <footer id="footer" class="main-footer">
+                        <p>Footer text</p>
+                    </footer>
+                </body>
+            </html>
+        "#;
+        let dom = parse_html(html);
+
+        // Test various selectors
+        assert_eq!(dom.query_selector_all("a").len(), 2);
+        assert_eq!(dom.query_selector_all(".nav-link").len(), 2);
+        assert_eq!(dom.query_selector_all("#header").len(), 1);
+        assert_eq!(dom.query_selector_all("article.post").len(), 1);
+        assert_eq!(dom.query_selector_all("h1.title").len(), 1);
+        assert_eq!(dom.query_selector_all("[href]").len(), 2);
+    }
+
+    #[test]
+    fn test_query_selector_empty_selector() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all("");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_selector_whitespace_handling() {
+        let dom = parse_html("<html><body><div>Content</div></body></html>");
+        let results = dom.query_selector_all("  div  ");
+        assert_eq!(results.len(), 1);
     }
 }
